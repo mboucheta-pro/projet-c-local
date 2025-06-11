@@ -1,0 +1,1 @@
+kubectl delete -k app/wordpress/kustomization.yaml --ignore-not-found

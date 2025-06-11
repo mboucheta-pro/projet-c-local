@@ -1,0 +1,52 @@
+---
+- hosts: github_runner
+  become: true
+  vars:
+    runner_version: "2.316.0"
+    github_repo: "mon-org/mon-repo"   # À adapter
+    runner_token: "TON_TOKEN_ICI"     # À adapter
+  tasks:
+    - name: Installer les dépendances
+      apt:
+        name:
+          - curl
+          - tar
+          - git
+        state: present
+        update_cache: yes
+
+    - name: Créer le dossier du runner
+      file:
+        path: /opt/github-runner
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: 0755
+
+    - name: Télécharger le binaire du runner
+      become_user: ubuntu
+      get_url:
+        url: "https://github.com/actions/runner/releases/download/v{{ runner_version }}/actions-runner-linux-x64-{{ runner_version }}.tar.gz"
+        dest: /opt/github-runner/actions-runner.tar.gz
+
+    - name: Extraire le runner
+      become_user: ubuntu
+      unarchive:
+        src: /opt/github-runner/actions-runner.tar.gz
+        dest: /opt/github-runner/
+        remote_src: yes
+
+    - name: Installer le runner
+      become_user: ubuntu
+      shell: |
+        ./config.sh --url https://github.com/{{ github_repo }} --token {{ runner_token }} --unattended --labels ec2
+      args:
+        chdir: /opt/github-runner
+
+    - name: Démarrer le service runner
+      become_user: ubuntu
+      shell: |
+        ./svc.sh install
+        ./svc.sh start
+      args:
+        chdir: /opt/github-runner
