@@ -3,9 +3,24 @@
   become: true
   vars:
     runner_version: "2.316.0"
-    github_repo: "mon-org/mon-repo"   # À adapter
-    runner_token: "TON_TOKEN_ICI"     # À adapter
+    github_repo: "mboucheta-pro/projet-c-local"   # À adapter
+  vars_files:
+    - ./secrets.yml # Contient github_pat ; password : 1109
   tasks:
+    - name: Obtenir un token d'enregistrement pour le runner
+      uri:
+        url: "https://api.github.com/repos/{{ github_repo }}/actions/runners/registration-token"
+        method: POST
+        headers:
+          Authorization: "token {{ github_pat }}"
+          Accept: "application/vnd.github.v3+json"
+        status_code: 201
+      register: registration_token_response
+
+    - name: Définir le runner_token
+      set_fact:
+        runner_token: "{{ registration_token_response.json.token }}"
+
     - name: Installer les dépendances
       apt:
         name:
@@ -39,14 +54,16 @@
     - name: Installer le runner
       become_user: ubuntu
       shell: |
-        ./config.sh --url https://github.com/{{ github_repo }} --token {{ runner_token }} --unattended --labels ec2
+        if [ -f /opt/github-runner/.runner ]; then
+          ./config.sh remove --token {{ runner_token }}
+        fi
+        ./config.sh --url https://github.com/{{ github_repo }} --token {{ runner_token }} --unattended --labels projet-c-local --name github-runner
       args:
         chdir: /opt/github-runner
-
     - name: Démarrer le service runner
       become_user: ubuntu
       shell: |
-        ./svc.sh install
-        ./svc.sh start
+        sudo ./svc.sh install
+        sudo ./svc.sh start
       args:
         chdir: /opt/github-runner
