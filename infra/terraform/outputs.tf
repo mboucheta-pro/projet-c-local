@@ -13,3 +13,8 @@ output "public_key_openssh" {
   description = "Clé publique SSH au format OpenSSH"
   value       = tls_private_key.deployer.public_key_openssh
 }
+
+output "sonarqube_ip" {
+  description = "Adresse IP publique du serveur SonarQube"
+  value       = aws_instance.sonarqube.public_ip
+}

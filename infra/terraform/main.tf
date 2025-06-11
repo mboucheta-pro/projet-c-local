@@ -64,6 +64,13 @@ resource "aws_security_group" "instances" {
     cidr_blocks = ["0.0.0.0/0"] # À restreindre en production
   }
 
+  ingress {
+    from_port   = 9000
+    to_port     = 9000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # À restreindre à ton IP en production
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -86,7 +93,7 @@ resource "aws_instance" "github_runner" {
   vpc_security_group_ids = [aws_security_group.instances.id]
   key_name      = aws_key_pair.deployer.key_name
   
-  associate_public_ip_address = true // <-- Ajoute cette ligne
+  associate_public_ip_address = true
 
 
   root_block_device {
@@ -108,5 +115,32 @@ resource "local_file" "ansible_inventory" {
   content  = <<EOF
 [github_runner]
 ${aws_instance.github_runner.public_ip} ansible_user=ubuntu ansible_ssh_private_key_file=../files/id_rsa
+
+[sonarqube]
+${aws_instance.sonarqube.public_ip} ansible_user=ubuntu ansible_ssh_private_key_file=../files/id_rsa
 EOF
+}
+
+# SonarQube
+resource "aws_instance" "sonarqube" {
+  ami           = "ami-0a2e7efb4257c0907" # Amazon Linux 2023 pour ca-central-1 (ou choisis une Ubuntu officielle si tu préfères)
+  instance_type = "t3.medium" # 2 vCPU, 4 Go RAM (minimum recommandé pour SonarQube)
+  subnet_id     = module.vpc.public_subnets[0]
+  vpc_security_group_ids = [aws_security_group.instances.id]
+  key_name      = aws_key_pair.deployer.key_name
+
+  associate_public_ip_address = true
+
+  root_block_device {
+    volume_size = 32
+    volume_type = "gp3"
+  }
+
+  tags = merge(local.tags, {
+    Name = "${var.project}-sonarqube"
+  })
+
+  lifecycle {
+    ignore_changes = [ami, user_data]
+  }
 }
