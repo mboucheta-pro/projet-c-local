@@ -60,6 +60,7 @@
         ./config.sh --url https://github.com/{{ github_repo }} --token {{ runner_token }} --unattended --labels projet-c-local --name github-runner
       args:
         chdir: /opt/github-runner
+
     - name: Démarrer le service runner
       become_user: ubuntu
       shell: |

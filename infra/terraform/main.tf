@@ -28,6 +28,18 @@ resource "aws_key_pair" "deployer" {
   }
 }
 
+resource "local_file" "private_key" {
+  filename = "${path.module}/../files/id_rsa"
+  content  = tls_private_key.deployer.private_key_pem
+  file_permission = "0600"
+}
+
+resource "local_file" "public_key" {
+  filename = "${path.module}/../files/id_rsa.pub"
+  content  = tls_private_key.deployer.public_key_openssh
+  file_permission = "0644"
+}
+
 
 # VPC et réseau
 module "vpc" {

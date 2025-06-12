@@ -1,125 +1,73 @@
 ---
 - hosts: sonarqube
   become: true
-  vars:
-    sonarqube_version: "9.9.8.100196"
-    sonarqube_user: "sonarqube"
-    sonarqube_group: "sonarqube"
-    sonarqube_home: "/opt/sonarqube"
-    sonarqube_port: 9000
-    sonarqube_db_name: "sonarqube"
-    sonarqube_db_user: "sonar"
-    sonarqube_db_password: "sonarpass"
   tasks:
-    - name: Installer les dépendances
+    - name: Installer les dépendances de base
       apt:
         name:
-          - openjdk-17-jdk
-          - postgresql
-          - postgresql-contrib
-          - unzip
-          - wget
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
         state: present
         update_cache: yes
 
-    - name: S'assurer que PostgreSQL est démarré
+    - name: Ajouter la clé GPG officielle de Docker
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Ajouter le dépôt Docker
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
+        state: present
+
+    - name: Installer Docker et le plugin Docker Compose
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: S'assurer que Docker est démarré
       service:
-        name: postgresql
+        name: docker
         state: started
         enabled: yes
 
-    - name: Créer l'utilisateur PostgreSQL pour SonarQube
-      become: true
-      become_user: postgres
-      postgresql_user:
-        name: "{{ sonarqube_db_user }}"
-        password: "{{ sonarqube_db_password }}"
-        state: present
-
-    - name: Créer la base de données SonarQube
-      become: true
-      become_user: postgres
-      postgresql_db:
-        name: "{{ sonarqube_db_name }}"
-        owner: "{{ sonarqube_db_user }}"
-        encoding: UTF8
-        lc_collate: "en_US.UTF-8"
-        lc_ctype: "en_US.UTF-8"
-        template: template0
-        state: present
-
-    - name: Créer un utilisateur système SonarQube
+    - name: Ajouter l'utilisateur ubuntu au groupe docker
       user:
-        name: "{{ sonarqube_user }}"
-        shell: /bin/bash
-        system: yes
-        create_home: yes
+        name: ubuntu
+        groups: docker
+        append: yes
 
-    - name: Télécharger SonarQube
-      get_url:
-        url: "https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-{{ sonarqube_version }}.zip"
-        dest: "/tmp/sonarqube-{{ sonarqube_version }}.zip"
+    - name: Copier le fichier docker-compose
+      copy:
+        src: ../files/sq-docker-compose.yml
+        dest: /home/ubuntu/docker-compose.yml
+        owner: ubuntu
+        group: ubuntu
         mode: '0644'
 
-    - name: Décompresser SonarQube
-      unarchive:
-        src: "/tmp/sonarqube-{{ sonarqube_version }}.zip"
-        dest: "/opt/"
-        remote_src: yes
-        creates: "/opt/sonarqube-{{ sonarqube_version }}"
-
-    - name: Changer le propriétaire du dossier SonarQube
-      file:
-        path: "/opt/sonarqube-{{ sonarqube_version }}"
-        owner: "{{ sonarqube_user }}"
-        group: "{{ sonarqube_group }}"
-        recurse: yes
-
-    - name: Créer un lien symbolique vers /opt/sonarqube
-      file:
-        src: "/opt/sonarqube-{{ sonarqube_version }}"
-        dest: "{{ sonarqube_home }}"
-        state: link
-        force: yes
-
-    - name: Configurer la connexion à la base PostgreSQL dans SonarQube
-      lineinfile:
-        path: "{{ sonarqube_home }}/conf/sonar.properties"
-        regexp: '^#?sonar.jdbc.url='
-        line: "sonar.jdbc.url=jdbc:postgresql://localhost:5432/{{ sonarqube_db_name }}"
-      notify: restart sonarqube
-
-    - name: Définir l'utilisateur DB dans SonarQube
-      lineinfile:
-        path: "{{ sonarqube_home }}/conf/sonar.properties"
-        regexp: '^#?sonar.jdbc.username='
-        line: "sonar.jdbc.username={{ sonarqube_db_user }}"
-      notify: restart sonarqube
-
-    - name: Définir le mot de passe DB dans SonarQube
-      lineinfile:
-        path: "{{ sonarqube_home }}/conf/sonar.properties"
-        regexp: '^#?sonar.jdbc.password='
-        line: "sonar.jdbc.password={{ sonarqube_db_password }}"
-      notify: restart sonarqube
-
-    - name: Créer un service systemd pour SonarQube
+    - name: Créer un service systemd pour SonarQube Docker Compose
       copy:
-        dest: /etc/systemd/system/sonarqube.service
+        dest: /etc/systemd/system/sonarqube-dc.service
         content: |
           [Unit]
-          Description=SonarQube service
-          After=network.target
+          Description=SonarQube via Docker Compose
+          After=docker.service
+          Requires=docker.service
 
           [Service]
-          Type=simple
-          User={{ sonarqube_user }}
-          Group={{ sonarqube_group }}
-          Environment="JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64"
-          ExecStart={{ sonarqube_home }}/bin/linux-x86-64/sonar.sh start
-          ExecStop={{ sonarqube_home }}/bin/linux-x86-64/sonar.sh stop
-          Restart=always
-          LimitNOFILE=65536
+          Type=oneshot
+          RemainAfterExit=yes
+          User=ubuntu
+          WorkingDirectory=/home/ubuntu
+          ExecStart=/usr/bin/docker compose -f /home/ubuntu/docker-compose.yml up -d
+          ExecStop=/usr/bin/docker compose -f /home/ubuntu/docker-compose.yml down
 
           [Install]
           WantedBy=multi-user.target
@@ -129,23 +77,8 @@
       systemd:
         daemon_reload: yes
 
-    - name: Activer et démarrer SonarQube
+    - name: Activer et démarrer le service SonarQube Docker Compose
       systemd:
-        name: sonarqube
+        name: sonarqube-dc
         enabled: yes
         state: started
-
-    - name: Attendre que SonarQube soit disponible
-      uri:
-        url: "http://localhost:{{ sonarqube_port }}"
-        status_code: 200
-      register: result
-      until: result.status == 200
-      retries: 10
-      delay: 10
-
-  handlers:
-    - name: restart sonarqube
-      systemd:
-        name: sonarqube
-        state: restarted
