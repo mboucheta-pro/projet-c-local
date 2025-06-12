@@ -2,6 +2,15 @@
 - hosts: sonarqube
   become: true
   tasks:
+
+    - name: Augmenter vm.max_map_count pour Elasticsearch/SonarQube
+      sysctl:
+        name: vm.max_map_count
+        value: '262144'
+        state: present
+        sysctl_set: yes
+        reload: yes
+
     - name: Installer les dépendances de base
       apt:
         name:
