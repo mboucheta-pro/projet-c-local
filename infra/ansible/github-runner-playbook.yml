@@ -51,12 +51,47 @@
         dest: /opt/github-runner/
         remote_src: yes
 
-    - name: Installer le runner
+    - name: Arrêter le service runner si déjà présent
+      become_user: ubuntu
+      shell: |
+        if [ -f /opt/github-runner/.runner ]; then
+          ./svc.sh stop || true
+        fi
+      args:
+        chdir: /opt/github-runner
+
+    - name: Désinstaller le service runner si déjà présent
+      become_user: ubuntu
+      shell: |
+        if [ -f /opt/github-runner/.runner ]; then
+          sudo ./svc.sh uninstall || true
+        fi
+      args:
+        chdir: /opt/github-runner
+
+    - name: Supprimer la configuration runner si déjà présente
       become_user: ubuntu
       shell: |
         if [ -f /opt/github-runner/.runner ]; then
           ./config.sh remove --token {{ runner_token }}
         fi
+      args:
+        chdir: /opt/github-runner
+
+    - name: Supprimer le fichier service si présent
+      file:
+        path: /etc/systemd/system/github-runner.service
+        state: absent
+
+    - name: Supprimer le fichier .runner si présent
+      become_user: ubuntu
+      file:
+        path: /opt/github-runner/.runner
+        state: absent
+
+    - name: Installer le runner
+      become_user: ubuntu
+      shell: |
         ./config.sh --url https://github.com/{{ github_repo }} --token {{ runner_token }} --unattended --labels projet-c-local --name github-runner
       args:
         chdir: /opt/github-runner
@@ -68,3 +103,39 @@
         sudo ./svc.sh start
       args:
         chdir: /opt/github-runner
+
+    - name: Installer SonarScanner
+      apt:
+        name:
+          - openjdk-17-jre
+          - unzip
+        state: present
+        update_cache: yes
+
+    - name: Télécharger SonarScanner
+      get_url:
+        url: "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip"
+        dest: /opt/sonar-scanner.zip
+
+    - name: Décompresser SonarScanner
+      unarchive:
+        src: /opt/sonar-scanner.zip
+        dest: /opt/
+        remote_src: yes
+
+    - name: Créer un lien symbolique pour sonar-scanner
+      file:
+        src: /opt/sonar-scanner-5.0.1.3006-linux/bin/sonar-scanner
+        dest: /usr/local/bin/sonar-scanner
+        state: link
+        force: yes
+
+    - name: Installer Trivy
+      shell: |
+        apt-get install -y wget
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb stable main" > /etc/apt/sources.list.d/trivy.list
+        apt-get update
+        apt-get install -y trivy
+      args:
+        executable: /bin/bash
