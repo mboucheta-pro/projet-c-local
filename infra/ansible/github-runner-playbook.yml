@@ -24,6 +24,8 @@
     - name: Installer les dépendances
       apt:
         name:
+          - openjdk-17-jre
+          - unzip
           - curl
           - tar
           - git
@@ -104,14 +106,6 @@
       args:
         chdir: /opt/github-runner
 
-    - name: Installer SonarScanner
-      apt:
-        name:
-          - openjdk-17-jre
-          - unzip
-        state: present
-        update_cache: yes
-
     - name: Télécharger SonarScanner
       get_url:
         url: "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip"
@@ -130,12 +124,8 @@
         state: link
         force: yes
 
-    - name: Installer Trivy
+    - name: Installer Trivy (script officiel)
       shell: |
-        apt-get install -y wget
-        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg
-        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb stable main" > /etc/apt/sources.list.d/trivy.list
-        apt-get update
-        apt-get install -y trivy
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin latest
       args:
         executable: /bin/bash
